@@ -29,7 +29,9 @@ const config = {
       'http://localhost:3001',
       'http://localhost:4000',
       'https://kazdoura-lb.com',
-      'https://www.kazdoura-lb.com'
+      'https://www.kazdoura-lb.com',
+      'https://admin.kazdoura-lb.com',
+      'https://kazdoura-backend-railway-production.up.railway.app'
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],

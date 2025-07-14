@@ -19,18 +19,21 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Check for the specific admin user
-    if (email === 'admin@kazdoura.com' && password === 'Awsedrft123') {
+    // Check for admin user from environment variables
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@kazdoura.com';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'Awsedrft123';
+    
+    if (email === adminEmail && password === adminPassword) {
       // Create JWT token
       const expiresIn = process.env.JWT_EXPIRE && typeof process.env.JWT_EXPIRE === 'string' ? process.env.JWT_EXPIRE : '30d';
       const token = jwt.sign(
         { 
           id: 1, 
-          email: 'admin@kazdoura.com', 
+          email: adminEmail, 
           name: 'Admin User',
           role: 'admin' 
         },
-        process.env.JWT_SECRET,
+        process.env.JWT_SECRET || 'your-secret-key',
         { expiresIn }
       );
 
@@ -41,7 +44,7 @@ router.post('/login', async (req, res) => {
           token,
           user: {
             id: 1,
-            email: 'admin@kazdoura.com',
+            email: adminEmail,
             name: 'Admin User',
             role: 'admin'
           }
