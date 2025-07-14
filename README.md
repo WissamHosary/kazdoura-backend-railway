@@ -233,4 +233,4 @@ The API includes comprehensive error handling and validation. Test endpoints usi
 
 ## Support
 
-For questions or issues, please refer to the main project documentation or create an issue in the repository. 
+For questions or issues, please refer to the main project documentation or create an issue in the repository. "# kazdoura-backend-railway" 
