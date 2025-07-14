@@ -10,7 +10,7 @@ require('dotenv').config({ path: './config.env' });
 console.log('🌍 Loading MySQL configuration...');
 
 // Import unified configuration
-const { config, helpers } = require('../config.js');
+const { config, helpers } = require('./config.js');
 
 // Import database utilities
 const { testConnection, initializeDatabase } = require('./config/database');
