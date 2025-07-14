@@ -1,0 +1,38 @@
+{
+  "name": "kazdoura-backend",
+  "version": "2.0.0",
+  "description": "Kazdoura E-commerce Backend API with MySQL",
+  "main": "server-mysql.js",
+  "scripts": {
+    "start": "node server-mysql.js",
+    "dev": "nodemon server-mysql.js",
+    "build": "echo 'No build step required for Node.js backend'",
+    "test": "echo 'No tests specified'"
+  },
+  "keywords": [
+    "e-commerce",
+    "mysql",
+    "api",
+    "kazdoura"
+  ],
+  "author": "Kazdoura Team",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-fileupload": "^1.4.3",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.6.5",
+    "multer": "^1.4.5-lts.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
