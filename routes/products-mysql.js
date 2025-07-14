@@ -520,6 +520,87 @@ router.put('/:id/stock', async (req, res) => {
   }
 });
 
+// @desc    Update product stock
+// @route   PUT /api/products/:id/stock
+// @access  Public
+router.put('/:id/stock', async (req, res) => {
+  try {
+    const { quantity, color } = req.body;
+    const productId = req.params.id;
+
+    if (!quantity || quantity <= 0) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Valid quantity is required'
+      });
+    }
+
+    // Get current product
+    const [products] = await pool.execute(
+      'SELECT * FROM products WHERE id = ? AND is_active = TRUE',
+      [productId]
+    );
+
+    if (products.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Product not found'
+      });
+    }
+
+    const product = products[0];
+    let colorStock = null;
+
+    // Parse existing color stock
+    if (product.color_stock) {
+      try {
+        colorStock = JSON.parse(product.color_stock);
+      } catch (error) {
+        console.log('⚠️ Invalid color_stock JSON for product', productId);
+        colorStock = {};
+      }
+    }
+
+    // Update stock based on color or general stock
+    if (color && colorStock) {
+      // Update specific color stock
+      if (colorStock[color] !== undefined) {
+        colorStock[color] = Math.max(0, colorStock[color] - quantity);
+      }
+      
+      // Update the product with new color stock
+      await pool.execute(
+        'UPDATE products SET color_stock = ? WHERE id = ?',
+        [JSON.stringify(colorStock), productId]
+      );
+    } else {
+      // Update general stock
+      const newStock = Math.max(0, (product.stock || 0) - quantity);
+      await pool.execute(
+        'UPDATE products SET stock = ? WHERE id = ?',
+        [newStock, productId]
+      );
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Stock updated successfully',
+      data: {
+        productId,
+        quantity,
+        color,
+        updatedStock: color ? colorStock?.[color] : product.stock - quantity
+      }
+    });
+  } catch (error) {
+    console.error('Update stock error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Server error updating stock'
+    });
+  }
+});
+
 // @desc    Delete product
 // @route   DELETE /api/products/:id
 // @access  Public (temporarily for testing)

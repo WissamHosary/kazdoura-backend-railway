@@ -23,6 +23,13 @@ router.post('/login', async (req, res) => {
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@kazdoura.com';
     const adminPassword = process.env.ADMIN_PASSWORD || 'Awsedrft123';
     
+    // Debug logging
+    console.log('🔍 Login attempt:', { email, adminEmail, passwordMatch: password === adminPassword });
+    console.log('🔧 Environment variables:', { 
+      ADMIN_EMAIL: process.env.ADMIN_EMAIL, 
+      ADMIN_PASSWORD: process.env.ADMIN_PASSWORD ? 'SET' : 'NOT SET' 
+    });
+    
     if (email === adminEmail && password === adminPassword) {
       // Create JWT token
       const expiresIn = process.env.JWT_EXPIRE && typeof process.env.JWT_EXPIRE === 'string' ? process.env.JWT_EXPIRE : '30d';
