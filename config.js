@@ -19,7 +19,7 @@ const config = {
     jwtExpire: process.env.JWT_EXPIRE || '30d',
     rateLimit: {
       windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 100 // limit each IP to 100 requests per windowMs
+      max: 1000 // Increased to 1000 requests per 15 minutes for handling 100+ products
     }
   },
   
