@@ -162,8 +162,8 @@ router.post('/', handleFileUpload, handleUploadError, async (req, res) => {
     
     // Set default image if no images provided
     if (uploadedImages.length === 0) {
-      console.log('⚠️ No images provided, using placeholder');
-      uploadedImages.push('https://picsum.photos/400/300');
+      console.log('⚠️ No images provided, using empty array');
+      // Don't add any fallback image - let admin handle image upload
     }
 
     // Generate SKU
@@ -629,41 +629,6 @@ router.put('/:id/stock', async (req, res) => {
   }
 });
 
-// @desc    Delete product
-// @route   DELETE /api/products/:id
-// @access  Public (temporarily for testing)
-router.delete('/:id', async (req, res) => {
-  try {
-    const [products] = await pool.execute(
-      'SELECT * FROM products WHERE id = ?',
-      [req.params.id]
-    );
-
-    if (products.length === 0) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Product not found'
-      });
-    }
-
-    await pool.execute(
-      'DELETE FROM products WHERE id = ?',
-      [req.params.id]
-    );
-
-    res.status(200).json({
-      status: 'success',
-      message: 'Product deleted successfully'
-    });
-  } catch (error) {
-    console.error('Delete product error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: 'Server error during product deletion'
-    });
-  }
-});
-
 // @desc    Delete all products (Bulk delete)
 // @route   DELETE /api/products
 // @access  Public (temporarily for testing)
@@ -695,6 +660,41 @@ router.delete('/', async (req, res) => {
     res.status(500).json({
       status: 'error',
       message: 'Server error during bulk product deletion'
+    });
+  }
+});
+
+// @desc    Delete product
+// @route   DELETE /api/products/:id
+// @access  Public (temporarily for testing)
+router.delete('/:id', async (req, res) => {
+  try {
+    const [products] = await pool.execute(
+      'SELECT * FROM products WHERE id = ?',
+      [req.params.id]
+    );
+
+    if (products.length === 0) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Product not found'
+      });
+    }
+
+    await pool.execute(
+      'DELETE FROM products WHERE id = ?',
+      [req.params.id]
+    );
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Product deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete product error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Server error during product deletion'
     });
   }
 });

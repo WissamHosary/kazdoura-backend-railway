@@ -50,7 +50,7 @@ async function testColorStock() {
         'Electronics',
         'red,blue,green',
         testColorStock,
-        JSON.stringify(['https://picsum.photos/400/300']),
+        JSON.stringify([]),
         JSON.stringify(['test', 'color-stock'])
       ]
     );

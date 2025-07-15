@@ -142,7 +142,7 @@ async function addSampleData() {
         brand: 'Sample Brand',
         stock: 100,
         sku: 'SAMPLE-001',
-        images: JSON.stringify(['https://picsum.photos/400/300']),
+        images: JSON.stringify([]),
         tags: JSON.stringify(['sample', 'test'])
       },
       {
@@ -153,7 +153,7 @@ async function addSampleData() {
         brand: 'Sample Brand',
         stock: 50,
         sku: 'SAMPLE-002',
-        images: JSON.stringify(['https://picsum.photos/400/300']),
+        images: JSON.stringify([]),
         tags: JSON.stringify(['sample', 'clothing'])
       }
     ];
