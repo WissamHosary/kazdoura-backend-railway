@@ -45,8 +45,8 @@ const config = {
   },
   
   upload: {
-    maxFileSize: 10 * 1024 * 1024, // 10MB
-    allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'],
+    maxFileSize: 50 * 1024 * 1024, // Increased to 50MB for handling large images
+    allowedTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif'],
     uploadPath: './public/uploads/'
   },
   

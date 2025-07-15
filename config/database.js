@@ -7,7 +7,7 @@ const dbConfig = {
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'kazdoura_db',
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: 200, // Increased to 200 for handling 100+ products
   queueLimit: 0
 };
 

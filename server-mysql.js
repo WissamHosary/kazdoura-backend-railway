@@ -99,7 +99,7 @@ app.use(express.urlencoded({
 
 // File upload middleware with express-fileupload
 app.use(fileUpload({
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  limits: { fileSize: 50 * 1024 * 1024 }, // Increased to 50MB limit
   abortOnLimit: true,
   responseOnLimit: 'File size limit has been reached',
   createParentPath: true,
