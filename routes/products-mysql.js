@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const { body, validationResult } = require('express-validator');
 const { handleFileUpload, handleUploadError } = require('../middleware/upload');
 const { pool } = require('../config/database');
@@ -130,20 +131,33 @@ router.post('/', handleFileUpload, handleUploadError, async (req, res) => {
     const uploadedImages = [];
     
     // Process uploaded files from express-fileupload
-    if (req.body.uploadedImages && req.body.uploadedImages.length > 0) {
-      console.log('📁 Found uploaded files:', req.body.uploadedImages.length);
-      uploadedImages.push(...req.body.uploadedImages);
-    } else {
-      console.log('📁 No uploaded files found');
+    if (req.files && req.files.images) {
+      const files = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
+      console.log('📁 Found uploaded files:', files.length);
+      
+      for (const file of files) {
+        if (file.size > 0) {
+          const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${file.name}`;
+          const uploadPath = path.join(__dirname, '../public/uploads', fileName);
+          
+          await file.mv(uploadPath);
+          uploadedImages.push(`/uploads/${fileName}`);
+          console.log('📁 Saved file:', fileName);
+        }
+      }
     }
     
     // Process image URLs from form data
-    if (req.body.image) {
-      console.log('📁 Processing image URL:', req.body.image);
-      uploadedImages.push(req.body.image);
-    } else if (req.body.images && Array.isArray(req.body.images)) {
-      console.log('📁 Processing images array:', req.body.images);
-      uploadedImages.push(...req.body.images);
+    if (req.body.imageUrls) {
+      try {
+        const imageUrls = JSON.parse(req.body.imageUrls);
+        if (Array.isArray(imageUrls)) {
+          console.log('📁 Processing image URLs:', imageUrls);
+          uploadedImages.push(...imageUrls);
+        }
+      } catch (error) {
+        console.log('⚠️ Invalid imageUrls JSON:', error.message);
+      }
     }
     
     // Set default image if no images provided
@@ -294,11 +308,11 @@ router.put('/:id', handleFileUpload, handleUploadError, async (req, res) => {
     }
     if (req.body.size !== undefined) {
       updateFields.push('size = ?');
-      updateValues.push(req.body.size || '');
+      updateValues.push(req.body.size || null);
     }
     if (req.body.color !== undefined) {
       updateFields.push('color = ?');
-      updateValues.push(req.body.color || '');
+      updateValues.push(req.body.color || null);
     }
     if (req.body.colorStock !== undefined) {
       let colorStock = null;
@@ -316,9 +330,12 @@ router.put('/:id', handleFileUpload, handleUploadError, async (req, res) => {
       updateValues.push(colorStock ? JSON.stringify(colorStock) : null);
     }
 
-    // Handle image updates - only update if new images are provided
-    let updatedImages = null;
-    if (req.body.uploadedImages || req.body.image || req.body.images) {
+    // Handle image updates - check for clearImages flag
+    if (req.body.clearImages === 'true') {
+      console.log('📁 Clearing all images for product');
+      updateFields.push('images = ?');
+      updateValues.push(JSON.stringify([]));
+    } else if (req.body.uploadedImages || req.body.image || req.body.images || req.body.imageUrls) {
       const uploadedImages = [];
       
       // Process uploaded files from express-fileupload
@@ -333,11 +350,22 @@ router.put('/:id', handleFileUpload, handleUploadError, async (req, res) => {
         uploadedImages.push(...req.body.images);
       }
       
+      // Process imageUrls from form data
+      if (req.body.imageUrls) {
+        try {
+          const imageUrls = JSON.parse(req.body.imageUrls);
+          if (Array.isArray(imageUrls)) {
+            uploadedImages.push(...imageUrls);
+          }
+        } catch (error) {
+          console.log('⚠️ Invalid imageUrls JSON:', error.message);
+        }
+      }
+      
       // Only update if we have new images
       if (uploadedImages.length > 0) {
         updateFields.push('images = ?');
         updateValues.push(JSON.stringify(uploadedImages));
-        updatedImages = uploadedImages;
         console.log('📁 Updating product images:', uploadedImages);
       } else {
         console.log('📁 No new images provided, keeping current images');

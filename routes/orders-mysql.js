@@ -3,6 +3,268 @@ const { pool } = require('../config/database');
 
 const router = express.Router();
 
+// @desc    Delete order (Dashboard)
+// @route   DELETE /api/orders/:id/dashboard
+// @access  Admin
+router.delete('/:id/dashboard', async (req, res) => {
+  try {
+    await pool.execute('DELETE FROM orders WHERE id = ?', [req.params.id]);
+    
+    // Get updated analytics
+    const [totalOrders] = await pool.execute('SELECT COUNT(*) as count FROM orders');
+    const [pendingOrders] = await pool.execute("SELECT COUNT(*) as count FROM orders WHERE status = 'pending'");
+    const [completedOrders] = await pool.execute("SELECT COUNT(*) as count FROM orders WHERE status = 'completed'");
+    const [totalRevenue] = await pool.execute("SELECT SUM(total_amount) as total FROM orders WHERE status = 'completed'");
+
+    res.status(200).json({ 
+      status: 'success', 
+      message: 'Order deleted successfully',
+      analytics: {
+        totalOrders: totalOrders[0].count,
+        pendingOrders: pendingOrders[0].count,
+        completedOrders: completedOrders[0].count,
+        totalRevenue: totalRevenue[0].total || 0
+      }
+    });
+  } catch (error) {
+    console.error('Delete order error:', error);
+    res.status(500).json({ status: 'error', message: 'Server error during order deletion' });
+  }
+});
+
+// @desc    Delete all orders (Dashboard)
+// @route   DELETE /api/orders/dashboard/all
+// @access  Admin
+router.delete('/dashboard/all', async (req, res) => {
+  try {
+    await pool.execute('DELETE FROM orders');
+    
+    res.status(200).json({ 
+      status: 'success', 
+      message: 'All orders deleted successfully',
+      analytics: {
+        totalOrders: 0,
+        pendingOrders: 0,
+        completedOrders: 0,
+        totalRevenue: 0
+      }
+    });
+  } catch (error) {
+    console.error('Delete all orders error:', error);
+    res.status(500).json({ status: 'error', message: 'Server error during bulk order deletion' });
+  }
+});
+
+// @desc    Update order status (Dashboard)
+// @route   PUT /api/orders/:id/status/dashboard
+// @access  Admin
+router.put('/:id/status/dashboard', async (req, res) => {
+  try {
+    const { status, payment_status } = req.body;
+    if (!status && !payment_status) {
+      return res.status(400).json({ status: 'error', message: 'No status provided' });
+    }
+
+    // Get the current order to check previous status
+    const [currentOrder] = await pool.execute('SELECT * FROM orders WHERE id = ?', [req.params.id]);
+    if (currentOrder.length === 0) {
+      return res.status(404).json({ status: 'error', message: 'Order not found' });
+    }
+
+    const order = currentOrder[0];
+    const previousStatus = order.status;
+    const items = order.items ? JSON.parse(order.items) : [];
+
+    // Update order status
+    const updateFields = [];
+    const updateValues = [];
+    if (status) {
+      updateFields.push('status = ?');
+      updateValues.push(status);
+    }
+    if (payment_status) {
+      updateFields.push('payment_status = ?');
+      updateValues.push(payment_status);
+    }
+    updateValues.push(req.params.id);
+    
+    await pool.execute(`UPDATE orders SET ${updateFields.join(', ')} WHERE id = ?`, updateValues);
+
+    // Handle stock updates based on status change
+    const updatedProducts = [];
+    if (status && status !== previousStatus) {
+      if (status === 'completed' || status === 'delivered') {
+        // Decrease stock when order is completed
+        for (const item of items) {
+          if (item.productId) {
+            try {
+              // Get current product stock
+              const [products] = await pool.execute(
+                'SELECT stock, color_stock FROM products WHERE id = ?',
+                [item.productId]
+              );
+              
+              if (products.length > 0) {
+                const product = products[0];
+                let newStock = product.stock;
+                let newColorStock = product.color_stock;
+
+                // Update regular stock
+                if (product.stock !== null && product.stock !== undefined) {
+                  newStock = Math.max(0, product.stock - item.quantity);
+                }
+
+                // Update color stock if exists
+                if (product.color_stock && item.color) {
+                  try {
+                    const colorStock = JSON.parse(product.color_stock);
+                    if (colorStock[item.color]) {
+                      colorStock[item.color] = Math.max(0, colorStock[item.color] - item.quantity);
+                      newColorStock = JSON.stringify(colorStock);
+                    }
+                  } catch (error) {
+                    console.log('Error parsing color stock:', error);
+                  }
+                }
+
+                // Update product stock
+                await pool.execute(
+                  'UPDATE products SET stock = ?, color_stock = ? WHERE id = ?',
+                  [newStock, newColorStock, item.productId]
+                );
+
+                updatedProducts.push({
+                  id: item.productId,
+                  name: item.name,
+                  oldStock: product.stock,
+                  newStock: newStock,
+                  quantity: item.quantity
+                });
+
+                console.log(`Updated stock for product ${item.productId}: ${product.stock} -> ${newStock}`);
+              }
+            } catch (error) {
+              console.error(`Error updating stock for product ${item.productId}:`, error);
+            }
+          }
+        }
+      } else if (status === 'cancelled' && (previousStatus === 'completed' || previousStatus === 'delivered')) {
+        // Restore stock when order is cancelled after being completed
+        for (const item of items) {
+          if (item.productId) {
+            try {
+              // Get current product stock
+              const [products] = await pool.execute(
+                'SELECT stock, color_stock FROM products WHERE id = ?',
+                [item.productId]
+              );
+              
+              if (products.length > 0) {
+                const product = products[0];
+                let newStock = product.stock;
+                let newColorStock = product.color_stock;
+
+                // Update regular stock
+                if (product.stock !== null && product.stock !== undefined) {
+                  newStock = product.stock + item.quantity;
+                }
+
+                // Update color stock if exists
+                if (product.color_stock && item.color) {
+                  try {
+                    const colorStock = JSON.parse(product.color_stock);
+                    if (colorStock[item.color]) {
+                      colorStock[item.color] = colorStock[item.color] + item.quantity;
+                      newColorStock = JSON.stringify(colorStock);
+                    }
+                  } catch (error) {
+                    console.log('Error parsing color stock:', error);
+                  }
+                }
+
+                // Update product stock
+                await pool.execute(
+                  'UPDATE products SET stock = ?, color_stock = ? WHERE id = ?',
+                  [newStock, newColorStock, item.productId]
+                );
+
+                updatedProducts.push({
+                  id: item.productId,
+                  name: item.name,
+                  oldStock: product.stock,
+                  newStock: newStock,
+                  quantity: item.quantity
+                });
+
+                console.log(`Restored stock for product ${item.productId}: ${product.stock} -> ${newStock}`);
+              }
+            } catch (error) {
+              console.error(`Error restoring stock for product ${item.productId}:`, error);
+            }
+          }
+        }
+      }
+    }
+
+    // Get updated analytics for dashboard
+    const [totalOrders] = await pool.execute('SELECT COUNT(*) as count FROM orders');
+    const [pendingOrders] = await pool.execute("SELECT COUNT(*) as count FROM orders WHERE status = 'pending'");
+    const [completedOrders] = await pool.execute("SELECT COUNT(*) as count FROM orders WHERE status = 'completed'");
+    const [totalRevenue] = await pool.execute("SELECT SUM(total_amount) as total FROM orders WHERE status = 'completed'");
+
+    res.status(200).json({ 
+      status: 'success', 
+      message: 'Order status updated successfully',
+      stockUpdated: status === 'completed' || status === 'delivered' || status === 'cancelled',
+      updatedProducts,
+      analytics: {
+        totalOrders: totalOrders[0].count,
+        pendingOrders: pendingOrders[0].count,
+        completedOrders: completedOrders[0].count,
+        totalRevenue: totalRevenue[0].total || 0
+      }
+    });
+  } catch (error) {
+    console.error('Update order status error:', error);
+    res.status(500).json({ status: 'error', message: 'Server error during order update' });
+  }
+});
+
+// @desc    Get all orders (Dashboard)
+// @route   GET /api/orders/dashboard
+// @access  Admin
+router.get('/dashboard', async (req, res) => {
+  try {
+    const [orders] = await pool.execute('SELECT * FROM orders ORDER BY created_at DESC');
+    
+    // Parse items JSON
+    const formattedOrders = orders.map(order => ({
+      ...order,
+      items: order.items ? JSON.parse(order.items) : []
+    }));
+
+    // Get analytics
+    const [totalOrders] = await pool.execute('SELECT COUNT(*) as count FROM orders');
+    const [pendingOrders] = await pool.execute("SELECT COUNT(*) as count FROM orders WHERE status = 'pending'");
+    const [completedOrders] = await pool.execute("SELECT COUNT(*) as count FROM orders WHERE status = 'completed'");
+    const [totalRevenue] = await pool.execute("SELECT SUM(total_amount) as total FROM orders WHERE status = 'completed'");
+
+    res.status(200).json({ 
+      status: 'success', 
+      data: formattedOrders,
+      analytics: {
+        totalOrders: totalOrders[0].count,
+        pendingOrders: pendingOrders[0].count,
+        completedOrders: completedOrders[0].count,
+        totalRevenue: totalRevenue[0].total || 0
+      }
+    });
+  } catch (error) {
+    console.error('Get dashboard orders error:', error);
+    res.status(500).json({ status: 'error', message: 'Server error' });
+  }
+});
+
 // @desc    Get all orders
 // @route   GET /api/orders
 // @access  Admin (for dashboard)
@@ -329,216 +591,6 @@ router.put('/:id/status', async (req, res) => {
   }
 });
 
-// @desc    Update order status (Dashboard)
-// @route   PUT /api/orders/:id/status/dashboard
-// @access  Admin
-router.put('/:id/status/dashboard', async (req, res) => {
-  try {
-    const { status, payment_status } = req.body;
-    if (!status && !payment_status) {
-      return res.status(400).json({ status: 'error', message: 'No status provided' });
-    }
-
-    // Get the current order to check previous status
-    const [currentOrder] = await pool.execute('SELECT * FROM orders WHERE id = ?', [req.params.id]);
-    if (currentOrder.length === 0) {
-      return res.status(404).json({ status: 'error', message: 'Order not found' });
-    }
-
-    const order = currentOrder[0];
-    const previousStatus = order.status;
-    const items = order.items ? JSON.parse(order.items) : [];
-
-    // Update order status
-    const updateFields = [];
-    const updateValues = [];
-    if (status) {
-      updateFields.push('status = ?');
-      updateValues.push(status);
-    }
-    if (payment_status) {
-      updateFields.push('payment_status = ?');
-      updateValues.push(payment_status);
-    }
-    updateValues.push(req.params.id);
-    
-    await pool.execute(`UPDATE orders SET ${updateFields.join(', ')} WHERE id = ?`, updateValues);
-
-    // Handle stock updates based on status change
-    const updatedProducts = [];
-    if (status && status !== previousStatus) {
-      if (status === 'completed' || status === 'delivered') {
-        // Decrease stock when order is completed
-        for (const item of items) {
-          if (item.productId) {
-            try {
-              // Get current product stock
-              const [products] = await pool.execute(
-                'SELECT stock, color_stock FROM products WHERE id = ?',
-                [item.productId]
-              );
-              
-              if (products.length > 0) {
-                const product = products[0];
-                let newStock = product.stock;
-                let newColorStock = product.color_stock;
-
-                // Update regular stock
-                if (product.stock !== null && product.stock !== undefined) {
-                  newStock = Math.max(0, product.stock - item.quantity);
-                }
-
-                // Update color stock if exists
-                if (product.color_stock && item.color) {
-                  try {
-                    const colorStock = JSON.parse(product.color_stock);
-                    if (colorStock[item.color]) {
-                      colorStock[item.color] = Math.max(0, colorStock[item.color] - item.quantity);
-                      newColorStock = JSON.stringify(colorStock);
-                    }
-                  } catch (error) {
-                    console.log('Error parsing color stock:', error);
-                  }
-                }
-
-                // Update product stock
-                await pool.execute(
-                  'UPDATE products SET stock = ?, color_stock = ? WHERE id = ?',
-                  [newStock, newColorStock, item.productId]
-                );
-
-                updatedProducts.push({
-                  id: item.productId,
-                  name: item.name,
-                  oldStock: product.stock,
-                  newStock: newStock,
-                  quantity: item.quantity
-                });
-
-                console.log(`Updated stock for product ${item.productId}: ${product.stock} -> ${newStock}`);
-              }
-            } catch (error) {
-              console.error(`Error updating stock for product ${item.productId}:`, error);
-            }
-          }
-        }
-      } else if (status === 'cancelled' && (previousStatus === 'completed' || previousStatus === 'delivered')) {
-        // Restore stock when order is cancelled after being completed
-        for (const item of items) {
-          if (item.productId) {
-            try {
-              // Get current product stock
-              const [products] = await pool.execute(
-                'SELECT stock, color_stock FROM products WHERE id = ?',
-                [item.productId]
-              );
-              
-              if (products.length > 0) {
-                const product = products[0];
-                let newStock = product.stock;
-                let newColorStock = product.color_stock;
-
-                // Update regular stock
-                if (product.stock !== null && product.stock !== undefined) {
-                  newStock = product.stock + item.quantity;
-                }
-
-                // Update color stock if exists
-                if (product.color_stock && item.color) {
-                  try {
-                    const colorStock = JSON.parse(product.color_stock);
-                    if (colorStock[item.color]) {
-                      colorStock[item.color] = colorStock[item.color] + item.quantity;
-                      newColorStock = JSON.stringify(colorStock);
-                    }
-                  } catch (error) {
-                    console.log('Error parsing color stock:', error);
-                  }
-                }
-
-                // Update product stock
-                await pool.execute(
-                  'UPDATE products SET stock = ?, color_stock = ? WHERE id = ?',
-                  [newStock, newColorStock, item.productId]
-                );
-
-                updatedProducts.push({
-                  id: item.productId,
-                  name: item.name,
-                  oldStock: product.stock,
-                  newStock: newStock,
-                  quantity: item.quantity
-                });
-
-                console.log(`Restored stock for product ${item.productId}: ${product.stock} -> ${newStock}`);
-              }
-            } catch (error) {
-              console.error(`Error restoring stock for product ${item.productId}:`, error);
-            }
-          }
-        }
-      }
-    }
-
-    // Get updated analytics for dashboard
-    const [totalOrders] = await pool.execute('SELECT COUNT(*) as count FROM orders');
-    const [pendingOrders] = await pool.execute("SELECT COUNT(*) as count FROM orders WHERE status = 'pending'");
-    const [completedOrders] = await pool.execute("SELECT COUNT(*) as count FROM orders WHERE status = 'completed'");
-    const [totalRevenue] = await pool.execute("SELECT SUM(total_amount) as total FROM orders WHERE status = 'completed'");
-
-    res.status(200).json({ 
-      status: 'success', 
-      message: 'Order status updated successfully',
-      stockUpdated: status === 'completed' || status === 'delivered' || status === 'cancelled',
-      updatedProducts,
-      analytics: {
-        totalOrders: totalOrders[0].count,
-        pendingOrders: pendingOrders[0].count,
-        completedOrders: completedOrders[0].count,
-        totalRevenue: totalRevenue[0].total || 0
-      }
-    });
-  } catch (error) {
-    console.error('Update order status error:', error);
-    res.status(500).json({ status: 'error', message: 'Server error during order update' });
-  }
-});
-
-// @desc    Get all orders (Dashboard)
-// @route   GET /api/orders/dashboard
-// @access  Admin
-router.get('/dashboard', async (req, res) => {
-  try {
-    const [orders] = await pool.execute('SELECT * FROM orders ORDER BY created_at DESC');
-    
-    // Parse items JSON
-    const formattedOrders = orders.map(order => ({
-      ...order,
-      items: order.items ? JSON.parse(order.items) : []
-    }));
-
-    // Get analytics
-    const [totalOrders] = await pool.execute('SELECT COUNT(*) as count FROM orders');
-    const [pendingOrders] = await pool.execute("SELECT COUNT(*) as count FROM orders WHERE status = 'pending'");
-    const [completedOrders] = await pool.execute("SELECT COUNT(*) as count FROM orders WHERE status = 'completed'");
-    const [totalRevenue] = await pool.execute("SELECT SUM(total_amount) as total FROM orders WHERE status = 'completed'");
-
-    res.status(200).json({ 
-      status: 'success', 
-      data: formattedOrders,
-      analytics: {
-        totalOrders: totalOrders[0].count,
-        pendingOrders: pendingOrders[0].count,
-        completedOrders: completedOrders[0].count,
-        totalRevenue: totalRevenue[0].total || 0
-      }
-    });
-  } catch (error) {
-    console.error('Get dashboard orders error:', error);
-    res.status(500).json({ status: 'error', message: 'Server error' });
-  }
-});
-
 // @desc    Delete order
 // @route   DELETE /api/orders/:id
 // @access  Admin
@@ -559,58 +611,6 @@ router.delete('/', async (req, res) => {
   try {
     await pool.execute('DELETE FROM orders');
     res.status(200).json({ status: 'success', message: 'All orders deleted successfully' });
-  } catch (error) {
-    console.error('Delete all orders error:', error);
-    res.status(500).json({ status: 'error', message: 'Server error during bulk order deletion' });
-  }
-});
-
-// @desc    Delete order (Dashboard)
-// @route   DELETE /api/orders/:id/dashboard
-// @access  Admin
-router.delete('/:id/dashboard', async (req, res) => {
-  try {
-    await pool.execute('DELETE FROM orders WHERE id = ?', [req.params.id]);
-    
-    // Get updated analytics
-    const [totalOrders] = await pool.execute('SELECT COUNT(*) as count FROM orders');
-    const [pendingOrders] = await pool.execute("SELECT COUNT(*) as count FROM orders WHERE status = 'pending'");
-    const [completedOrders] = await pool.execute("SELECT COUNT(*) as count FROM orders WHERE status = 'completed'");
-    const [totalRevenue] = await pool.execute("SELECT SUM(total_amount) as total FROM orders WHERE status = 'completed'");
-
-    res.status(200).json({ 
-      status: 'success', 
-      message: 'Order deleted successfully',
-      analytics: {
-        totalOrders: totalOrders[0].count,
-        pendingOrders: pendingOrders[0].count,
-        completedOrders: completedOrders[0].count,
-        totalRevenue: totalRevenue[0].total || 0
-      }
-    });
-  } catch (error) {
-    console.error('Delete order error:', error);
-    res.status(500).json({ status: 'error', message: 'Server error during order deletion' });
-  }
-});
-
-// @desc    Delete all orders (Dashboard)
-// @route   DELETE /api/orders/dashboard/all
-// @access  Admin
-router.delete('/dashboard/all', async (req, res) => {
-  try {
-    await pool.execute('DELETE FROM orders');
-    
-    res.status(200).json({ 
-      status: 'success', 
-      message: 'All orders deleted successfully',
-      analytics: {
-        totalOrders: 0,
-        pendingOrders: 0,
-        completedOrders: 0,
-        totalRevenue: 0
-      }
-    });
   } catch (error) {
     console.error('Delete all orders error:', error);
     res.status(500).json({ status: 'error', message: 'Server error during bulk order deletion' });
